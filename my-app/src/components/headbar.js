@@ -8,5 +8,4 @@ return(
           >Toggle Sidebar</button>
         </div>
 )
-
 }
