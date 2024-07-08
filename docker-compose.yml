@@ -1,4 +1,57 @@
+networks:
+  connectors_stack_net:
+
 services:
+  
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTICSEARCH_VERSION}
+    environment:
+      - "discovery.type=single-node"
+      - "ES_JAVA_OPTS=-Xms2048m -Xmx2048m"
+      - "xpack.security.enabled=true"
+      - "xpack.security.authc.api_key.enabled=true"
+      - "xpack.security.authc.token.enabled=true"
+      - "ELASTIC_PASSWORD=${ELASTIC_PASSWORD}"
+      - "action.destructive_requires_name=false"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    networks:
+      - connectors_stack_net
+    ports:
+      - 9200:9200
+    volumes:
+      - conn-es-data:/usr/share/elasticsearch/data
+
+  # Kibana 服务
+  kibana:
+    image: docker.elastic.co/kibana/kibana:${KIBANA_VERSION}
+    ports:
+      - 5601:5601
+    depends_on:
+      - elasticsearch
+    networks:
+      - connectors_stack_net
+    environment:
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      ELASTICSEARCH_USERNAME: kibana_system
+      ELASTICSEARCH_PASSWORD: ${ELASTIC_PASSWORD}
+      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: c69548d9027afcf4d55146b1d425a9f4c69548d9027afcf4d55146b1d425a9f4
+
+  # Elastic Connectors 服务
+  elastic-connectors:
+    image: docker.elastic.co/enterprise-search/elastic-connectors:${CONNECTORS_VERSION}
+    depends_on:
+      - elasticsearch
+      - kibana
+    volumes:
+      - ${CURDIR}/connectors-config:/config
+    command: /app/bin/elastic-ingest -c /config/config.yml
+    
+
+  # 应用服务
   app:
     build:
       context: ./backend
@@ -7,6 +60,10 @@ services:
     working_dir: /app
     volumes:
       - ./backend:/app
+    networks:
+      - connectors_stack_net
+
+  # MongoDB service
   mongo:
     image: mongo
     restart: always
@@ -18,3 +75,8 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: superstrongpsw
     volumes:
       - ./db_data/:/data/db/
+    networks:
+      - connectors_stack_net
+
+volumes:
+  conn-es-data:
